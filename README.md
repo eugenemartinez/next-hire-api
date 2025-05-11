@@ -1,5 +1,8 @@
 # 🧰 NextHire API
 
+![Python](https://img.shields.io/badge/Python-3.9+-blue)
+![Status](https://img.shields.io/badge/status-active-brightgreen)
+
 A **FastAPI** backend service for a job board application that enables users to create, search, filter, and manage job listings.
 
 ---
@@ -105,7 +108,7 @@ A **FastAPI** backend service for a job board application that enables users to 
 Modification of job listings requires a **modification code**, which is returned upon job creation.
 Include this code in the request header:
 
-```
+```http
 X-Modification-Code: your_code_here
 ```
 
@@ -116,15 +119,19 @@ X-Modification-Code: your_code_here
 Run the test suite using:
 
 ```bash
+# Option 1: Recommended - disables rate limiting during tests
+TESTING=true pytest
+
+# Option 2: Standard run (rate limits apply)
 pytest
 ```
+
+> **Note:** The `TESTING=true` environment variable disables rate limiting during tests to prevent failures caused by hitting daily request limits (e.g., 50/day for certain endpoints).
+> Be sure to set this variable in your CI/CD pipeline configuration as well.
 
 ---
 
 ## 📚 API Documentation
 
-Interactive Swagger docs are available at:
-**[http://localhost:8000/api/docs](http://localhost:8000/api/docs)**
-
-![Python](https://img.shields.io/badge/Python-3.9+-blue)
-![Status](https://img.shields.io/badge/status-active-brightgreen)
+Interactive Swagger UI is available at:
+👉 [http://localhost:8000/api/docs](http://localhost:8000/api/docs)

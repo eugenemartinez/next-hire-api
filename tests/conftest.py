@@ -1,3 +1,4 @@
+import os
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -7,6 +8,9 @@ from urllib.parse import urlparse, urlunparse # Ensure this import is present
 from main import app # Your FastAPI app
 from core.database import Base, get_db # Import your Base and get_db
 from core.config import settings
+
+# Set testing mode for rate limiter
+os.environ["TESTING"] = "true"
 
 # --- Test Database Setup ---
 # Get the main database URL string

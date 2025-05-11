@@ -1,5 +1,6 @@
 print("DEBUG: server/core/limiter.py is being loaded") # Add this for debugging
 
+import os
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 import logging  # Import the logging module
@@ -8,6 +9,11 @@ from .config import settings
 
 # Get a logger instance for this module
 logger = logging.getLogger(__name__)
+
+# Check if we're in testing mode
+is_testing = os.environ.get("TESTING", "").lower() == "true"
+if is_testing:
+    logger.info("TESTING mode detected - rate limiting will be disabled")
 
 # Log the REDIS_URL being used for the limiter
 if settings.REDIS_URL and ("redis://" in settings.REDIS_URL or "rediss://" in settings.REDIS_URL):
@@ -20,7 +26,8 @@ else:
 limiter = Limiter(
     key_func=get_remote_address,  # Standard key function
     storage_uri=settings.REDIS_URL,  # slowapi will use in-memory if this is None or invalid for Redis
-    strategy="fixed-window"
+    strategy="fixed-window",
+    enabled=not is_testing  # Disable rate limiting in test mode
     # default_limits=["100/minute"] # Example: if you want a global default
 )
 
