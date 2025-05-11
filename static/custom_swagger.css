@@ -1,0 +1,80 @@
+/* NextHire Swagger UI Customization */
+
+/* Top navigation bar styling */
+.swagger-ui .topbar {
+    background-color: #2c3e50; /* Dark blue header */
+    border-bottom: 3px solid #3498db; /* Blue accent */
+}
+
+/* Hide the default Swagger logo */
+.swagger-ui .topbar .link img {
+    display: none;
+}
+
+/* Add a custom company name instead of logo */
+.swagger-ui .topbar .link:before {
+    content: "NextHire API";
+    color: white;
+    font-size: 1.5em;
+    font-weight: bold;
+    padding: 15px;
+}
+
+/* Customize the main heading text */
+.swagger-ui .info .title {
+    color: #3498db;
+    font-family: 'Arial', sans-serif;
+}
+
+/* Customize the operation blocks (GET, POST, etc.) */
+.swagger-ui .opblock.opblock-get {
+    border-color: #3498db;
+    background: rgba(52, 152, 219, 0.1);
+}
+
+.swagger-ui .opblock.opblock-post {
+    border-color: #2ecc71;
+    background: rgba(46, 204, 113, 0.1);
+}
+
+.swagger-ui .opblock.opblock-delete {
+    border-color: #e74c3c;
+    background: rgba(231, 76, 60, 0.1);
+}
+
+.swagger-ui .opblock.opblock-patch {
+    border-color: #f1c40f;
+    background: rgba(241, 196, 15, 0.1);
+}
+
+/* Buttons styling */
+.swagger-ui .btn.execute {
+    background-color: #3498db;
+    color: white;
+    border-color: #2980b9;
+}
+
+.swagger-ui .btn.execute:hover {
+    background-color: #2980b9;
+}
+
+/* Response section */
+.swagger-ui .responses-table .response-col_status {
+    color: #3498db;
+}
+
+/* Make the overall layout a bit cleaner */
+.swagger-ui .wrapper {
+    padding: 0 30px;
+}
+
+/* Improve the schema sections */
+.swagger-ui .model-box {
+    background: rgba(52, 152, 219, 0.05);
+    border-radius: 6px;
+}
+
+/* Adjust fonts for better readability */
+.swagger-ui, .swagger-ui .opblock-summary-description {
+    font-family: 'Arial', sans-serif;
+}
