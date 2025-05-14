@@ -47,8 +47,8 @@ async def create_new_job(
 @router.get("/", response_model=schemas.JobListResponse)
 async def read_jobs_list(
     # ...existing parameters...
-    skip: int = Query(0, ge=0), # Removed alias="page_offset"
-    limit: int = Query(20, ge=1, le=100), # Removed alias="page_size"
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
     search: Optional[str] = Query(None, min_length=1, max_length=100, description="Search term for title, company, description."),
     tags: Optional[str] = Query(None, description="Comma-separated list of tags to filter by (e.g., 'python,fastapi')."),
     sort_by: Optional[str] = Query("created_at", description="Field to sort by: title, created_at, updated_at, company_name, location."),
@@ -56,6 +56,10 @@ async def read_jobs_list(
     job_type: Optional[schemas.JobType] = Query(None, description="Filter by job type."),
     location: Optional[str] = Query(None, min_length=1, max_length=100, description="Filter by exact location string."),
     company_name: Optional[str] = Query(None, min_length=1, max_length=100, description="Filter by exact company name."),
+    # Add new query parameters for salary filtering
+    salary_min: Optional[int] = Query(None, ge=0, description="Minimum salary to filter by."),
+    salary_max: Optional[int] = Query(None, ge=0, description="Maximum salary to filter by."),
+    salary_currency: Optional[str] = Query(None, min_length=3, max_length=3, description="Currency code for salary filtering (e.g., 'USD')."),
     db: Session = Depends(get_db)
 ):
     """
@@ -73,7 +77,11 @@ async def read_jobs_list(
         sort_order=sort_order,
         job_type_filter=job_type.value if job_type else None,
         location_filter=location,
-        company_name_filter=company_name
+        company_name_filter=company_name,
+        # Add new salary filter parameters
+        salary_min_filter=salary_min,
+        salary_max_filter=salary_max,
+        salary_currency_filter=salary_currency
     )
     return {"jobs": jobs, "limit": limit, "skip": skip, "total": total_jobs}
 
@@ -115,6 +123,30 @@ async def delete_specific_job(
     deleted_job_object = crud.delete_job(db=db, job_id=job_id, modification_code=modification_code)
     return schemas.JobDeleteResponse(message="Job deleted successfully", job_id=deleted_job_object.id)
 
+@router.get("/{job_id}/related", response_model=List[schemas.Job], tags=["jobs"])
+async def get_related_jobs_route(
+    job_id: uuid.UUID,
+    limit: int = Query(3, ge=1, le=10, description="Number of related jobs to return."), # Default to 3
+    db: Session = Depends(get_db)
+):
+    """
+    Get a list of jobs related to the specified job_id based on shared tags.
+    """
+    # First, get the current job to extract its tags
+    # crud.get_job will raise NotFoundError if the job_id is invalid,
+    # which will be handled by FastAPI's error handling (resulting in a 404).
+    current_job = crud.get_job(db, job_id=job_id) 
+
+    if not current_job.tags:
+        return [] # No tags on the current job, so no tag-based related jobs
+
+    related_jobs_list = crud.get_related_jobs(
+        db=db,
+        current_job_id=current_job.id,
+        source_tags=current_job.tags,
+        limit=limit
+    )
+    return related_jobs_list
 
 # --- Auxiliary Job Endpoints ---
 

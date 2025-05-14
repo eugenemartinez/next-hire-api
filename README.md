@@ -80,20 +80,21 @@ A **FastAPI** backend service for a job board application that enables users to 
 
 ### 🔧 Job Operations
 
-| Method | Endpoint               | Description                   | Auth Required |
-| ------ | ---------------------- | ----------------------------- | ------------- |
-| POST   | `/api/jobs`            | Create a new job listing      | No            |
-| GET    | `/api/jobs`            | List/search job listings      | No            |
-| GET    | `/api/jobs/{job_uuid}` | Get details of a specific job | No            |
-| PATCH  | `/api/jobs/{job_uuid}` | Update a job listing          | Yes (Header)  |
-| DELETE | `/api/jobs/{job_uuid}` | Delete a job listing          | Yes (Header)  |
+| Method | Endpoint               | Description                                       | Auth Required |
+| ------ | ---------------------- | ------------------------------------------------- | ------------- |
+| POST   | `/api/jobs`            | Create a new job listing                          | No            |
+| GET    | `/api/jobs`            | List/search job listings (with salary filtering)  | No            |
+| GET    | `/api/jobs/{job_uuid}` | Get details of a specific job                     | No            |
+| PATCH  | `/api/jobs/{job_uuid}` | Update a job listing                              | Yes (Header)  |
+| DELETE | `/api/jobs/{job_uuid}` | Delete a job listing                              | Yes (Header)  |
 
 ### 🛠️ Job Utilities
 
-| Method | Endpoint                      | Description                         |
-| ------ | ----------------------------- | ----------------------------------- |
-| POST   | `/api/jobs/saved`             | Batch retrieve job details by UUIDs |
-| POST   | `/api/jobs/{job_uuid}/verify` | Verify a modification code          |
+| Method | Endpoint                      | Description                                   |
+| ------ | ----------------------------- | --------------------------------------------- |
+| POST   | `/api/jobs/saved`             | Batch retrieve job details by UUIDs           |
+| POST   | `/api/jobs/{job_uuid}/verify` | Verify a modification code                    |
+| GET    | `/api/jobs/{job_uuid}/related`| Get related jobs based on shared tags         |
 
 ### 🏷️ Tags
 

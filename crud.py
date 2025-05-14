@@ -176,6 +176,7 @@ def update_job(
     """
     Update an existing job. Requires the correct modification_code.
     Sanitizes the description HTML if provided.
+    Converts Pydantic HttpUrl/EmailStr for application_info to string for DB.
     Raises NotFoundError if the job does not exist.
     Raises ForbiddenError if the modification code is incorrect.
     """
@@ -198,9 +199,14 @@ def update_job(
         )
 
     for key, value in update_data.items():
-        setattr(db_job, key, value)
-
-    db.add(db_job) # or db.merge(db_job) if that's preferred, add is fine for tracked objects
+        if key == 'application_info' and value is not None:
+            # Ensure application_info is stored as a string,
+            # converting from Pydantic's HttpUrl or EmailStr if necessary.
+            setattr(db_job, key, str(value))
+        else:
+            setattr(db_job, key, value)
+            
+    # db.add(db_job) # Not strictly necessary if db_job is already in session and tracked
     db.commit()
     db.refresh(db_job)
     return db_job
@@ -229,6 +235,29 @@ def delete_job(db: Session, job_id: uuid.UUID, modification_code: str) -> models
     db.commit()
     return db_job # Return the object that was deleted
 
+def get_related_jobs(
+    db: Session,
+    current_job_id: uuid.UUID,
+    source_tags: List[str],
+    limit: int = 3
+) -> List[models.Job]:
+    """
+    Retrieves a list of jobs related to the current job based on shared tags.
+    Excludes the current job itself.
+    Orders by recency (created_at).
+    """
+    if not source_tags: # If the current job has no tags, no related jobs can be found based on tags
+        return []
+
+    query = db.query(models.Job).filter(
+        models.Job.id != current_job_id,  # Exclude the current job
+        models.Job.tags.op('&&')(source_tags)  # Check for tag overlap (at least one common tag)
+    ).order_by(
+        desc(models.Job.created_at) # Order by most recently created
+    ).limit(limit)
+    
+    return query.all()
+
 def get_jobs_and_total(
     db: Session,
     skip: int = 0,
@@ -239,7 +268,11 @@ def get_jobs_and_total(
     sort_order: Optional[str] = "desc",
     job_type_filter: Optional[str] = None,
     location_filter: Optional[str] = None,
-    company_name_filter: Optional[str] = None
+    company_name_filter: Optional[str] = None,
+    # Add new parameters
+    salary_min_filter: Optional[int] = None,
+    salary_max_filter: Optional[int] = None,
+    salary_currency_filter: Optional[str] = None
 ) -> Tuple[List[models.Job], int]:
     """
     Retrieves a paginated list of jobs based on various filter and sort criteria,
@@ -247,7 +280,7 @@ def get_jobs_and_total(
     """
     query = db.query(models.Job)
 
-    # Apply filters
+    # Apply existing filters...
     if search:
         search_term = f"%{search.lower()}%"
         query = query.filter(
@@ -290,9 +323,42 @@ def get_jobs_and_total(
         # Using ilike for case-insensitive exact match for company name
         query = query.filter(func.lower(models.Job.company_name) == company_name_filter.lower())
 
-    # Get total count before applying pagination and sorting for count
+    # Apply salary filters
+    if salary_min_filter is not None:
+        # Find jobs where:
+        # - salary_min >= requested min (job min is above the filter min), OR
+        # - salary_max >= requested min AND salary_min IS NOT NULL (job range overlaps with requested min)
+        query = query.filter(
+            or_(
+                models.Job.salary_min >= salary_min_filter,
+                and_(
+                    models.Job.salary_max >= salary_min_filter,
+                    models.Job.salary_min.isnot(None)
+                )
+            )
+        )
+    
+    if salary_max_filter is not None:
+        # Find jobs where:
+        # - salary_max <= requested max AND salary_max IS NOT NULL (job max is below the filter max), OR
+        # - salary_min <= requested max (job min is below the filter max, so there's overlap)
+        query = query.filter(
+            or_(
+                and_(
+                    models.Job.salary_max <= salary_max_filter,
+                    models.Job.salary_max.isnot(None)
+                ),
+                models.Job.salary_min <= salary_max_filter
+            )
+        )
+    
+    if salary_currency_filter is not None:
+        # Only show jobs with matching currency
+        query = query.filter(func.lower(models.Job.salary_currency) == salary_currency_filter.lower())
+    
+    # Get total count before applying pagination
     total_jobs = query.count()
-
+    
     # Apply sorting with case-insensitivity for title
     if sort_by == "title":
         # Use func.lower for case-insensitive title sorting

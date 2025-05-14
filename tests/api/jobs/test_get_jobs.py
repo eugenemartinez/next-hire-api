@@ -5,6 +5,8 @@ from typing import List
 import random
 import string
 import uuid
+import time # For ensuring distinct created_at timestamps
+from datetime import datetime, timedelta, timezone # Ensure timezone is imported
 
 import schemas
 from models import Job as JobModel
@@ -395,7 +397,6 @@ def test_list_jobs_sorting(client: TestClient, db_session: Session):
     db_session.commit()
     
     # Wait to ensure timestamps differ
-    import time
     time.sleep(0.2)
     
     job2 = JobModel(
@@ -516,3 +517,379 @@ def test_get_job_by_id_invalid_uuid_format(client: TestClient):
     # The error detail should indicate a validation error related to UUID format
     assert any("uuid" in str(error).lower() for error in error_response["detail"]), \
         f"Expected UUID validation error, got: {error_response['detail']}"
+    
+def test_list_jobs_filter_by_salary(client: TestClient, db_session: Session):
+    """
+    Test filtering jobs by salary range and currency.
+    """
+    # Clear any existing jobs
+    db_session.query(JobModel).delete()
+    db_session.commit()
+    
+    # Create test jobs with different salary ranges and currencies
+    job1 = JobModel(
+        title="High-Salary USD Job",
+        company_name="Big Tech Co",
+        description="High paying job in USD",
+        application_info="apply@example.com",
+        poster_username="recruiter1",
+        salary_min=100000,
+        salary_max=150000,
+        salary_currency="USD",
+        modification_code=generate_modification_code(db_session)
+    )
+    
+    job2 = JobModel(
+        title="Mid-Salary USD Job",
+        company_name="Medium Corp",
+        description="Average paying job in USD",
+        application_info="apply@medium.com",
+        poster_username="recruiter2",
+        salary_min=50000,
+        salary_max=70000,
+        salary_currency="USD",
+        modification_code=generate_modification_code(db_session)
+    )
+    
+    job3 = JobModel(
+        title="EUR Job",
+        company_name="Euro Company",
+        description="Job with EUR salary",
+        application_info="apply@euro.eu",
+        poster_username="recruiter3",
+        salary_min=60000,
+        salary_max=80000,
+        salary_currency="EUR",
+        modification_code=generate_modification_code(db_session)
+    )
+    
+    job4 = JobModel(
+        title="Job without Salary",
+        company_name="No Salary Corp",
+        description="Job that doesn't specify salary",
+        application_info="apply@nosalary.com",
+        poster_username="recruiter4",
+        modification_code=generate_modification_code(db_session)
+    )
+    
+    db_session.add_all([job1, job2, job3, job4])
+    db_session.commit()
+    
+    # Test 1: Filter by minimum salary (80000+)
+    # Should match jobs where either salary_min or salary_max is >= 80000
+    response_min = client.get("/api/jobs/?salary_min=80000")
+    assert response_min.status_code == 200
+    data_min = response_min.json()
+    
+    assert data_min["total"] == 2, "Should find 2 jobs with salary ranges that include values >= 80000"
+    job_titles = {job["title"] for job in data_min["jobs"]}
+    assert "High-Salary USD Job" in job_titles, "Should include the high-salary job"
+    assert "EUR Job" in job_titles, "Should include the EUR job with max=80000"
+    
+    # Test 2: Filter by maximum salary (60000 or less)
+    # Should match jobs where either salary_min or salary_max is <= 60000
+    response_max = client.get("/api/jobs/?salary_max=60000")
+    assert response_max.status_code == 200
+    data_max = response_max.json()
+
+    assert data_max["total"] == 2, "Should find 2 jobs with salary ranges that include values <= 60000"
+    job_titles = {job["title"] for job in data_max["jobs"]}
+    assert "Mid-Salary USD Job" in job_titles, "Should include the mid-salary job (min=50000)"
+    # There should be one more job - verify which one it is (likely job4 or another one)
+
+    # Test 3: Filter by salary range (55000-90000) - should match job2 and job3
+    response_range = client.get("/api/jobs/?salary_min=55000&salary_max=90000")
+    assert response_range.status_code == 200
+    data_range = response_range.json()
+    
+    assert data_range["total"] == 2, "Should find 2 jobs in the 55000-90000 range"
+    job_titles = [job["title"] for job in data_range["jobs"]]
+    assert "Mid-Salary USD Job" in job_titles, "Mid-salary job should be in results"
+    assert "EUR Job" in job_titles, "EUR job should be in results"
+    
+    # Test 4: Filter by currency (EUR) - should match job3 only
+    response_curr = client.get("/api/jobs/?salary_currency=EUR")
+    assert response_curr.status_code == 200
+    data_curr = response_curr.json()
+    
+    assert data_curr["total"] == 1, "Should find 1 job with EUR currency"
+    assert data_curr["jobs"][0]["title"] == "EUR Job", "Should match the EUR job"
+    
+    # Test 5: Combine salary filter with other filters (e.g., with search)
+    response_combined = client.get("/api/jobs/?salary_min=50000&search=USD")
+    assert response_combined.status_code == 200
+    data_combined = response_combined.json()
+    
+    assert data_combined["total"] == 2, "Should find 2 jobs with salary_min >= 50000 AND containing 'USD'"
+    job_titles = [job["title"] for job in data_combined["jobs"]]
+    assert "High-Salary USD Job" in job_titles, "High-salary USD job should be in results"
+    assert "Mid-Salary USD Job" in job_titles, "Mid-salary USD job should be in results"
+    
+    # Test 6: Invalid salary values should be handled gracefully
+    response_invalid = client.get("/api/jobs/?salary_min=invalid")
+    assert response_invalid.status_code == 422, "Should return validation error for invalid salary"
+
+def test_get_related_jobs_success(client: TestClient, db_session: Session):
+    """
+    Test successfully retrieving related jobs based on shared tags.
+    """
+    now = datetime.now(timezone.utc) # Corrected line
+
+    # Create a main job
+    main_job_mod_code = generate_modification_code(db_session)
+    main_job = JobModel(
+        title="Main Python Job",
+        company_name="Core Tech",
+        description="Looking for Python devs.",
+        application_info="apply@core.com",
+        poster_username="main_recruiter",
+        tags=["python", "fastapi", "backend"],
+        modification_code=main_job_mod_code,
+        created_at = now - timedelta(days=1) # Oldest
+    )
+    db_session.add(main_job)
+    db_session.commit()
+
+    # Create related jobs
+    related_job1_mod_code = generate_modification_code(db_session)
+    related_job1 = JobModel(
+        title="Related Python/API Job",
+        company_name="API Solutions",
+        description="Python and API experience.",
+        application_info="hr@api.com",
+        poster_username="api_recruiter",
+        tags=["python", "api", "rest"], # Overlaps with "python"
+        modification_code=related_job1_mod_code,
+        created_at = now - timedelta(hours=3) # Older
+    )
+    db_session.add(related_job1)
+    db_session.commit()
+
+    related_job2_mod_code = generate_modification_code(db_session)
+    related_job2 = JobModel(
+        title="FastAPI Developer Needed",
+        company_name="Speedy Services",
+        description="FastAPI specialist.",
+        application_info="join@speedy.com",
+        poster_username="speedy_recruiter",
+        tags=["fastapi", "backend", "microservices"], # Overlaps with "fastapi", "backend"
+        modification_code=related_job2_mod_code,
+        created_at = now - timedelta(hours=2) # Newer
+    )
+    db_session.add(related_job2)
+    db_session.commit()
+    
+    related_job_newest_mod_code = generate_modification_code(db_session)
+    related_job_newest = JobModel(
+        title="Newest Python Role",
+        company_name="Fresh Jobs Inc.",
+        description="Just posted Python role.",
+        application_info="apply@fresh.com",
+        poster_username="fresh_recruiter",
+        tags=["python", "developer"], # Overlaps with "python"
+        modification_code=related_job_newest_mod_code,
+        created_at = now - timedelta(hours=1) # Newest of the related
+    )
+    db_session.add(related_job_newest)
+    db_session.commit()
+
+    # Create an unrelated job
+    unrelated_job_mod_code = generate_modification_code(db_session)
+    unrelated_job = JobModel(
+        title="Java Developer",
+        company_name="Java House",
+        description="Java and Spring.",
+        application_info="java@house.com",
+        poster_username="java_recruiter",
+        tags=["java", "spring"],
+        modification_code=unrelated_job_mod_code,
+        created_at = now # Could be anything, not part of the ordered check
+    )
+    db_session.add(unrelated_job)
+    db_session.commit() # Commit all at once after adding
+
+    # Refresh all objects whose IDs you'll use
+    db_session.refresh(main_job)
+    db_session.refresh(related_job1)
+    db_session.refresh(related_job2)
+    db_session.refresh(related_job_newest)
+    db_session.refresh(unrelated_job)
+
+    # Test with default limit (3)
+    response = client.get(f"/api/jobs/{main_job.id}/related")
+    assert response.status_code == 200
+    data = response.json()
+
+    assert isinstance(data, list)
+    assert len(data) == 3, "Should return 3 related jobs by default"
+    
+    returned_job_ids = {job["id"] for job in data}
+    assert str(main_job.id) not in returned_job_ids, "Main job should not be in related list"
+    assert str(unrelated_job.id) not in returned_job_ids, "Unrelated job should not be in list"
+
+    # Check order (newest first)
+    assert data[0]["id"] == str(related_job_newest.id)
+    assert data[1]["id"] == str(related_job2.id)
+    assert data[2]["id"] == str(related_job1.id)
+
+    for job_item in data:
+        assert "modification_code" not in job_item
+
+    # Test with custom limit (1)
+    response_limit_1 = client.get(f"/api/jobs/{main_job.id}/related?limit=1")
+    assert response_limit_1.status_code == 200
+    data_limit_1 = response_limit_1.json()
+    assert len(data_limit_1) == 1
+    assert data_limit_1[0]["id"] == str(related_job_newest.id)
+
+def test_get_related_jobs_no_tags_on_main_job(client: TestClient, db_session: Session):
+    """
+    Test getting related jobs when the main job has no tags.
+    Should return an empty list.
+    """
+    main_job_no_tags_mod_code = generate_modification_code(db_session)
+    main_job_no_tags = JobModel(
+        title="Job With No Tags",
+        company_name="Tagless Inc.",
+        description="This job has no tags.",
+        application_info="apply@tagless.com",
+        poster_username="tagless_recruiter",
+        tags=[], # No tags
+        modification_code=main_job_no_tags_mod_code
+    )
+    db_session.add(main_job_no_tags)
+    db_session.commit()
+    db_session.refresh(main_job_no_tags)
+
+    response = client.get(f"/api/jobs/{main_job_no_tags.id}/related")
+    assert response.status_code == 200
+    data = response.json()
+    assert data == []
+
+def test_get_related_jobs_no_matching_related_jobs(client: TestClient, db_session: Session):
+    """
+    Test getting related jobs when no other jobs share tags.
+    Should return an empty list.
+    """
+    main_job_mod_code = generate_modification_code(db_session)
+    main_job = JobModel(
+        title="Unique Tag Job",
+        company_name="Unique Corp",
+        description="Job with very unique tags.",
+        application_info="apply@unique.com",
+        poster_username="unique_recruiter",
+        tags=["ultra-specific-tag-123"],
+        modification_code=main_job_mod_code
+    )
+    db_session.add(main_job)
+    db_session.commit()
+    db_session.refresh(main_job)
+
+    # Add some other jobs with different tags
+    other_job_mod_code = generate_modification_code(db_session)
+    other_job = JobModel(
+        title="Different Tag Job",
+        company_name="Other Corp",
+        description="Different tags here.",
+        application_info="apply@other.com",
+        poster_username="other_recruiter",
+        tags=["generic-tag-abc"],
+        modification_code=other_job_mod_code
+    )
+    db_session.add(other_job)
+    db_session.commit()
+
+    response = client.get(f"/api/jobs/{main_job.id}/related")
+    assert response.status_code == 200
+    data = response.json()
+    assert data == []
+
+def test_get_related_jobs_fewer_than_limit(client: TestClient, db_session: Session):
+    """
+    Test getting related jobs when fewer matching jobs exist than the limit.
+    """
+    main_job_mod_code = generate_modification_code(db_session)
+    main_job = JobModel(
+        title="Main Job For Few Related",
+        company_name="Few Corp",
+        description="Python job.",
+        application_info="apply@few.com",
+        poster_username="few_recruiter",
+        tags=["python"],
+        modification_code=main_job_mod_code
+    )
+    db_session.add(main_job)
+    db_session.commit()
+    db_session.refresh(main_job)
+    time.sleep(0.1)
+
+    related_job_mod_code = generate_modification_code(db_session)
+    related_job = JobModel(
+        title="One Related Python Job",
+        company_name="One Corp",
+        description="Also Python.",
+        application_info="apply@one.com",
+        poster_username="one_recruiter",
+        tags=["python", "developer"],
+        modification_code=related_job_mod_code
+    )
+    db_session.add(related_job)
+    db_session.commit()
+    db_session.refresh(related_job)
+
+    response = client.get(f"/api/jobs/{main_job.id}/related?limit=5") # Request 5
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 1 # Only 1 related job exists
+    assert data[0]["id"] == str(related_job.id)
+
+def test_get_related_jobs_main_job_not_found(client: TestClient):
+    """
+    Test getting related jobs for a non-existent main job ID.
+    Should return 404.
+    """
+    non_existent_job_id = uuid.uuid4()
+    response = client.get(f"/api/jobs/{non_existent_job_id}/related")
+    assert response.status_code == 404
+    error_data = response.json()
+    assert "detail" in error_data
+    assert "not found" in error_data["detail"].lower()
+    
+def test_get_related_jobs_invalid_main_job_uuid(client: TestClient):
+    """
+    Test getting related jobs with an invalid UUID format for main job ID.
+    Should return 422.
+    """
+    response = client.get("/api/jobs/not-a-uuid/related")
+    assert response.status_code == 422
+
+def test_get_related_jobs_invalid_limit_param(client: TestClient, db_session: Session):
+    """
+    Test getting related jobs with invalid 'limit' query parameters.
+    Should return 422.
+    """
+    main_job_mod_code = generate_modification_code(db_session)
+    main_job = JobModel(
+        title="Job for Limit Test",
+        company_name="Limit Test Corp",
+        description="Testing limit param.",
+        application_info="apply@limit.com",
+        poster_username="limit_recruiter",
+        tags=["test"],
+        modification_code=main_job_mod_code
+    )
+    db_session.add(main_job)
+    db_session.commit()
+    db_session.refresh(main_job)
+
+    # Limit too small
+    response_small_limit = client.get(f"/api/jobs/{main_job.id}/related?limit=0")
+    assert response_small_limit.status_code == 422
+
+    # Limit too large
+    response_large_limit = client.get(f"/api/jobs/{main_job.id}/related?limit=11")
+    assert response_large_limit.status_code == 422
+
+    # Limit not an integer
+    response_non_int_limit = client.get(f"/api/jobs/{main_job.id}/related?limit=abc")
+    assert response_non_int_limit.status_code == 422
