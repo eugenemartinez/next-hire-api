@@ -166,7 +166,9 @@ async def get_saved_jobs_details(payload: schemas.JobIdsList, db: Session = Depe
     return jobs
 
 @router.post("/{job_id}/verify", response_model=schemas.JobVerificationResponse, tags=["jobs-utils"])
-async def verify_job_modification_code_route( # Renamed for clarity, though not strictly necessary
+@limiter.limit("10/15minutes")
+async def verify_job_modification_code_route(
+    request: Request,
     job_id: uuid.UUID,
     payload: schemas.JobModificationCodePayload,
     db: Session = Depends(get_db)
