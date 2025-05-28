@@ -1,4 +1,5 @@
 from typing import Any, Dict, Optional
+from fastapi import HTTPException, status
 
 class AppException(Exception):
     """
@@ -46,6 +47,10 @@ class BadRequestError(AppException):
     """Custom exception for 400 Bad Request errors."""
     def __init__(self, detail: Any = "Bad request", headers: Optional[Dict[str, Any]] = None):
         super().__init__(status_code=400, detail=detail, headers=headers)
+
+class RowLimitExceededError(HTTPException):
+    def __init__(self, detail: str = "The maximum number of records has been reached."):
+        super().__init__(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=detail)
 
 # You can add more specific exceptions as needed, e.g.:
 # class AuthenticationError(AppException):

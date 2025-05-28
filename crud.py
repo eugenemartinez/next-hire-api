@@ -10,7 +10,7 @@ import models
 import schemas
 from utils import generate_modification_code, generate_unique_poster_username
 # --- Add imports for custom exceptions ---
-from core.exceptions import NotFoundError, ForbiddenError
+from core.exceptions import NotFoundError, ForbiddenError, RowLimitExceededError # Add RowLimitExceededError
 
 # --- HTML Sanitation Settings (using Bleach) ---
 # Based on common rich text editor outputs and job description needs
@@ -48,6 +48,8 @@ def force_target_blank(name, value):
 # the HTML string after bleaching if Bleach's attribute filtering isn't sufficient.
 # For now, we'll stick to allowing 'target' and assume frontend/RTE handles setting it to '_blank'.
 
+MAX_JOB_POSTINGS_LIMIT = 5 # Define your hard limit here
+
 # === Job CRUD Operations ===
 
 def create_job(db: Session, job: schemas.JobCreate) -> models.Job:
@@ -55,7 +57,15 @@ def create_job(db: Session, job: schemas.JobCreate) -> models.Job:
     Create a new job posting.
     Generates a poster_username if not provided and a modification_code.
     Sanitizes the description HTML.
+    Raises RowLimitExceededError if the maximum number of job postings is reached.
     """
+    # Check if the row limit has been reached
+    current_job_count = db.query(func.count(models.Job.id)).scalar() # Efficient way to count
+    if current_job_count >= MAX_JOB_POSTINGS_LIMIT:
+        raise RowLimitExceededError(
+            detail=f"Cannot create new job. The maximum limit of {MAX_JOB_POSTINGS_LIMIT} job postings has been reached."
+        )
+
     # Generate a unique poster_username if not provided by the user
     db_poster_username = job.poster_username
     if not db_poster_username:

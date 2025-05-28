@@ -2,6 +2,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session # Assuming you might use it directly in some tests
 from typing import Any
+from crud import MAX_JOB_POSTINGS_LIMIT # Import the constant
 
 # Tests related to POST /api/jobs/
 
@@ -451,4 +452,39 @@ def test_create_job_poster_username_generated_if_not_provided(client: TestClient
     # assert db_job is not None
     # assert db_job.poster_username == generated_username
 
-# ... (any further tests for POST /api/jobs/ would go here)
+def test_create_job_fails_when_max_row_limit_reached(client: TestClient, sample_job_payload_factory, db_session: Session):
+    """
+    Test that creating a job fails with a 503 error when the MAX_JOB_POSTINGS_LIMIT is reached.
+    """
+    # Ensure the database is clean for this specific test if not already handled by fixtures
+    # (Pytest-SQLAlchemy usually handles this with transaction rollbacks per test)
+
+    # Create jobs up to the limit
+    for i in range(MAX_JOB_POSTINGS_LIMIT):
+        # Ensure each payload is somewhat unique if necessary, e.g., by title,
+        # to avoid accidental unique constraint issues if the factory isn't perfectly unique
+        # and the test runs very fast. For this test, basic uniqueness in title should suffice.
+        payload = sample_job_payload_factory(title=f"Test Job {i+1} to reach limit")
+        response = client.post("/api/jobs/", json=payload)
+        assert response.status_code == 201, \
+            f"Failed to create job {i+1}/{MAX_JOB_POSTINGS_LIMIT}. Response: {response.text}"
+
+    # Attempt to create one more job, which should exceed the limit
+    overflow_payload = sample_job_payload_factory(title="Overflow Job")
+    response_overflow = client.post("/api/jobs/", json=overflow_payload)
+
+    assert response_overflow.status_code == 503, \
+        f"Expected 503 status code when exceeding row limit, got {response_overflow.status_code}. Response: {response_overflow.text}"
+    
+    data = response_overflow.json()
+    assert "detail" in data, "Error response should contain a 'detail' field."
+    expected_error_message = f"Cannot create new job. The maximum limit of {MAX_JOB_POSTINGS_LIMIT} job postings has been reached."
+    assert data["detail"] == expected_error_message, \
+        f"Unexpected error message. Expected: '{expected_error_message}', Got: '{data['detail']}'"
+
+    # Verify that the total number of jobs in the database is indeed MAX_JOB_POSTINGS_LIMIT
+    # This requires importing your Job model
+    from models import Job as JobModel # Ensure this import is at the top of the file or within the test
+    job_count_in_db = db_session.query(JobModel).count()
+    assert job_count_in_db == MAX_JOB_POSTINGS_LIMIT, \
+        f"Expected {MAX_JOB_POSTINGS_LIMIT} jobs in DB, found {job_count_in_db}"
