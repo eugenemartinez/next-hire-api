@@ -48,7 +48,7 @@ def force_target_blank(name, value):
 # the HTML string after bleaching if Bleach's attribute filtering isn't sufficient.
 # For now, we'll stick to allowing 'target' and assume frontend/RTE handles setting it to '_blank'.
 
-MAX_JOB_POSTINGS_LIMIT = 5 # Define your hard limit here
+MAX_JOB_POSTINGS_LIMIT = 500 # Define your hard limit here
 
 # === Job CRUD Operations ===
 
