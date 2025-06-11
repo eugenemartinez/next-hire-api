@@ -15,7 +15,7 @@ class Settings(BaseSettings):
 
     DATABASE_URL: SecretStr # Default removed, will be loaded from .env
 
-    REDIS_URL: str = "redis://localhost:6379/0"
+    REDIS_URL: str = ""
 
     CORS_ALLOWED_ORIGINS: Union[str, List[str]] = "http://localhost:3000"
 

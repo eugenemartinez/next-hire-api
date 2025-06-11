@@ -3,36 +3,26 @@ print("DEBUG: server/core/limiter.py is being loaded") # Add this for debugging
 import os
 from slowapi import Limiter
 from slowapi.util import get_remote_address
-import logging  # Import the logging module
-
+import logging
 from .config import settings
 
-# Get a logger instance for this module
 logger = logging.getLogger(__name__)
 
-# Check if we're in testing mode
 is_testing = os.environ.get("TESTING", "").lower() == "true"
 if is_testing:
     logger.info("TESTING mode detected - rate limiting will be disabled")
 
-# Log the REDIS_URL being used for the limiter
-if settings.REDIS_URL and ("redis://" in settings.REDIS_URL or "rediss://" in settings.REDIS_URL):
-    logger.info(f"Rate limiter will attempt to use Redis storage at: {settings.REDIS_URL}")
+# Only use Redis if REDIS_URL is set and not localhost
+redis_url = settings.REDIS_URL
+if not redis_url or "localhost" in redis_url or "127.0.0.1" in redis_url:
+    logger.warning(f"Rate limiter will use in-memory storage (REDIS_URL='{redis_url}')")
+    redis_url = None
 else:
-    # This case would now only happen if REDIS_URL is empty or doesn't look like a Redis URL at all
-    logger.warning(f"Rate limiter REDIS_URL does not appear to be a valid Redis connection string: '{settings.REDIS_URL}'. Defaulting to in-memory storage if storage_uri is None or invalid.")
+    logger.info(f"Rate limiter will attempt to use Redis storage at: {redis_url}")
 
-# Initialize the limiter instance
 limiter = Limiter(
-    key_func=get_remote_address,  # Standard key function
-    storage_uri=settings.REDIS_URL,  # slowapi will use in-memory if this is None or invalid for Redis
+    key_func=get_remote_address,
+    storage_uri=redis_url,
     strategy="fixed-window",
-    enabled=not is_testing  # Disable rate limiting in test mode
-    # default_limits=["100/minute"] # Example: if you want a global default
+    enabled=not is_testing
 )
-
-# You might also want to configure basic logging in your main.py if you haven't already,
-# so that these log messages appear in your console.
-# For example, in main.py:
-# import logging
-# logging.basicConfig(level=logging.INFO)
